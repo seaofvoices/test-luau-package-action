@@ -1,0 +1,129 @@
+name: 'Test Luau Package Action'
+description: 'An action for testing Luau packages built with npm or yarn'
+
+inputs:
+  package-manager:
+    description: 'Package manager to use [defaults to yarn]. Options: yarn, npm'
+    required: false
+    default: 'yarn'
+  skip-checkout:
+    description: 'If true, skip checking out the repository (use when the workspace is already checked out)'
+    required: false
+    default: 'false'
+  skip-build:
+    description: 'If true, skip the build script step'
+    required: false
+    default: 'false'
+  skip-format:
+    description: 'If true, skip the style-check (format) script step'
+    required: false
+    default: 'false'
+  skip-lint:
+    description: 'If true, skip the lint script step'
+    required: false
+    default: 'false'
+  working-directory:
+    description: 'The working directory to use for the action'
+    required: false
+    default: '.'
+
+branding:
+  icon: 'check-circle'
+  color: 'orange'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout code
+      if: ${{ inputs.skip-checkout != 'true' }}
+      uses: actions/checkout@v6
+
+    - name: Install tools
+      uses: CompeyDev/setup-rokit@v0.1.2
+      with:
+        path: ${{ inputs.working-directory }}
+
+    - name: List tools
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: rokit list
+
+    - name: Enable corepack
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: corepack enable
+
+    - name: Setup Node
+      uses: actions/setup-node@v6
+      with:
+        node-version: latest
+        registry-url: https://registry.npmjs.org
+        cache: ${{ inputs.package-manager == 'npm' && 'npm' || 'yarn' }}
+        cache-dependency-path: ${{ (inputs.working-directory != '' && inputs.working-directory != '.') && format('{0}/', inputs.working-directory) || '' }}${{ inputs.package-manager == 'npm' && 'package-lock.json' || 'yarn.lock' }}
+
+    - name: Check version
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        if [ "${{ inputs.package-manager }}" = "npm" ]; then
+          npm --version
+        else
+          yarn --version
+        fi
+
+    - name: Install packages
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        if [ "${{ inputs.package-manager }}" = "npm" ]; then
+          npm ci
+        else
+          yarn install --immutable
+        fi
+
+    - name: Run npmluau
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "running prepare script"
+        if [ "${{ inputs.package-manager }}" = "npm" ]; then
+          npm run prepare
+        else
+          yarn run prepare
+        fi
+
+    - name: Run linter
+      if: ${{ inputs.skip-lint != 'true' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "running lint script"
+        if [ "${{ inputs.package-manager }}" = "npm" ]; then
+          npm run lint
+        else
+          yarn run lint
+        fi
+
+    - name: Verify code style
+      if: ${{ inputs.skip-format != 'true' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "running style-check script"
+        if [ "${{ inputs.package-manager }}" = "npm" ]; then
+          npm run style-check
+        else
+          yarn run style-check
+        fi
+
+    - name: Run build
+      if: ${{ inputs.skip-build != 'true' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "running build script"
+        if [ "${{ inputs.package-manager }}" = "npm" ]; then
+          npm run build
+        else
+          yarn run build
+        fi
